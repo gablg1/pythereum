@@ -40,10 +40,11 @@ class BlockChain:
         self.tx_queue.append(tx)
 
     def mine_new_block(self):
+        # We first create a fake block. We just use it to calculate the end state signature.
         block_without_end_state_sig = Block(self.tx_queue, self.last_block().hash(), 'REPLACE_ME')
         sig = self.end_state_signature(block_without_end_state_sig)
 
-        # TXs committed to the new block, so we add it to the chain and empty the queue
+        # Now that we have the end state sig, we commit the TXs, add the block to the chain, and empty the TX queue
         self.add_block(Block(self.tx_queue, self.last_block().hash(), sig))
         self.tx_queue = []
 
@@ -83,7 +84,7 @@ class BlockChain:
 
     def end_state_for_block(self, block):
         if block.hash == GENESIS_BLOCK_HASH:
-            return {}
+            return {accounts: {}}
 
         state = self.end_state_for_block(self.blocks[block.prev_block_hash])
         for tx in block.transactions:
