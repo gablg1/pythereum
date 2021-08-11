@@ -16,23 +16,34 @@ class Account:
     def type(self):
         return EXTERNALLY_OWNED if self.code is None else CONTRACT
 
-    def to_string(self):
-        return '{0} {1} {2} {3}'.format(self.nonce, self.balance, self.code, self.storage)
+    def __str__(self):
+        return '{0} {1} {2} {3} {4}'.format(self.address, self.nonce, self.balance, self.code, self.storage)
 
     def hash(self):
-        return sha256(self.to_string()).hexdigest()
+        return sha256(self.__str__()).hexdigest()
 
     def call_contract(self, storage):
         return eval(self.code, {storage: storage})
 
+# The state of the entire world is just a set of Accounts
+class WorldState:
+    def __init__(self, accounts):
+        self.accounts = accounts
+
+    def __str__(self):
+        return '\t'.join([account.__str__() for account in self.accounts.values()])
+
+    def signature(self):
+        return self.__str__()
 
 class BlockChain:
-    GENESIS_BLOCK_HASH = '00000000'
+    PRE_GENESIS_BLOCK_HASH = '00000000'
     def genesis_block(self):
-        return Block([], self.GENESIS_BLOCK_HASH, self.genesis_world_state())
+        return Block([], self.PRE_GENESIS_BLOCK_HASH, self.genesis_world_state().signature())
 
     def genesis_world_state(self):
-        return {accounts: {'0xdeadbeef': Account('0xdeadbeef', 0, 1000)}}
+        # FIXME: deadbeef duplicated
+        return WorldState({'0xdeadbeef': Account('0xdeadbeef', 0, 1000)})
 
     ## Toplevel BlockChain API
     def __init__(self):
@@ -63,7 +74,7 @@ class BlockChain:
         return next(iter([b for b in self.blocks.values() if fun(b)]), None)
 
     def last_block(self):
-        current_block = genesis_block()
+        current_block = self.genesis_block()
         while True:
             next_block = self.find_block_by((lambda b: b.prev_block_hash == current_block.hash()))
             if next_block is None:
@@ -74,7 +85,7 @@ class BlockChain:
 
     ## Block methods
     def is_block_valid(self, block):
-        if block.hash == self.GENESIS_BLOCK_HASH:
+        if block.hash == self.genesis_block().hash():
             return True
 
         # Check that the previous block is valid
@@ -89,7 +100,7 @@ class BlockChain:
         return self.end_state_signature(block) == block.end_state_signature
 
     def end_state_for_block(self, block):
-        if block.hash == self.GENESIS_BLOCK_HASH:
+        if block.hash() == self.genesis_block().hash():
             return self.genesis_world_state()
 
         state = self.end_state_for_block(self.blocks[block.prev_block_hash])
@@ -97,11 +108,8 @@ class BlockChain:
             state = self.apply_transaction(state, tx)
         return state
 
-    def signature_of_block_state(self, state):
-        return sha256('{0}'.format(state)).hexdigest()
-
     def end_state_signature(self, block):
-        return self.signature_of_block_state(self.end_state_for_block(block))
+        return self.end_state_for_block(block).signature()
 
     ## Transaction Methods
     def apply_transaction(self, state, tx):
@@ -149,20 +157,25 @@ class Block:
         self.transactions = transactions
         self.end_state_signature = end_state_signature
 
-    def to_string(self):
-        stringified_txs = '\t'.join([tx.to_string() for tx in self.transactions])
+    def __str__(self):
+        stringified_txs = '\t'.join([tx.__str__() for tx in self.transactions])
         return '{0}\t{1}\t{2}'.format(self.prev_block_hash, self.end_state_signature, stringified_txs)
 
     def hash(self):
-        return sha256(self.to_string()).hexdigest()
+        return sha256(self.__str__()).hexdigest()
 
 # And each transaction changes the state S via APPLY(S, TX) => S'
 class Transaction:
-    def __init__(self, sender_addr, receiver_addr, amount):
+    def __init__(self, sender_addr, receiver_addr, amount, data):
         self.sender_addr = sender_addr
         self.receiver_addr = receiver_addr
         self.amount = amount
+        self.data = data
+
+    def __str__(self):
+        return '{0},{1},{2},{3}'.format(self.sender_addr, self.receiver_addr, self.amount, self.data)
 
 
 blockchain = BlockChain()
+print('Accounts:')
 print(blockchain.end_state_for_block(blockchain.last_block()))
