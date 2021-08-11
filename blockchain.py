@@ -1,4 +1,5 @@
 from hashlib import sha256
+import copy
 
 # The state of Ethereum is the set of all accounts
 class Account:
@@ -21,6 +22,10 @@ class Account:
     def hash(self):
         return sha256(self.to_string()).hexdigest()
 
+    def call_contract(self, storage):
+        return eval(self.code, {storage: storage})
+
+
 class BlockChain:
     GENESIS_BLOCK_HASH = '00000000'
     def genesis_block(self):
@@ -28,14 +33,20 @@ class BlockChain:
 
     ## Toplevel BlockChain API
     def __init__(self):
-        self.accounts = {}
         self.blocks = {genesis_block().hash(): genesis_block()}
         self.tx_queue = []
 
-    def find_or_create_empty_account(self, address):
-        if account_hash not in self.accounts:
-            self.accounts[address] = Account(address, 0, 0, None, {})
-        return self.accounts[address]
+    def enqueue_transaction(self, tx):
+        self.tx_queue.append(tx)
+
+    def mine_new_block(self):
+        block_without_end_state_sig = Block(self.tx_queue, self.last_block().hash(), 'REPLACE_ME')
+        sig = self.end_state_signature(block_without_end_state_sig)
+
+        # TXs committed to the new block, so we add it to the chain and empty the queue
+        self.add_block(Block(self.tx_queue, self.last_block().hash(), sig))
+        self.tx_queue = []
+
 
     def add_block(self, block):
         if not self.is_block_valid(block):
@@ -53,10 +64,6 @@ class BlockChain:
             current_block = next_block
         return current_block
 
-    def enqueue_transaction(self, tx):
-        self.tx_queue.append(tx)
-
-    def mine_new_block(self):
 
     ## Block methods
     def is_block_valid(self, block):
@@ -69,9 +76,7 @@ class BlockChain:
             return False
 
         # TODO: check timestamp
-
         # TODO: Check difficulty, block number, tx root
-
         # TODO: Check proof of work
 
         return self.end_state_signature(block) == block.end_state_signature
@@ -93,7 +98,14 @@ class BlockChain:
 
     ## Transaction Methods
     def apply_transaction(self, state, tx):
-        if tx.nonce != (sender_account = self.accounts[tx.sender_addr]).nonce:
+        # So apply_transaction doesn't mutate anything
+        state = copy.deepcopy(state)
+
+        def find_or_create_empty_account(address, state):
+            if account_hash not in state.accounts:
+            return (state, state.accounts[address])
+
+        if tx.nonce != (sender_account = state.accounts[tx.sender_addr]).nonce:
             raise Exception('Transaction nonce must match that of sender account')
 
         # TODO: check well formed tx
@@ -102,21 +114,28 @@ class BlockChain:
             raise Exception('{0} only has {1} balance. Not enough to cover {2} amount'.format(tx.sender_addr,
                 sender_account.balance, tx.amount))
 
-        # Move money, creating the receiver account if necessary
+        # A None receiver_addr signals that this is a Contract Creation!
+        if tx.receiver_addr is None:
+            if tx.data is None:
+                raise Exception('Contract creation must provide code via the data argument')
+            contract_addr = sha256(tx.data)
+            new_contract = Account(contract_addr, 0, 0, tx.data, {})
+            state.accounts[new_contract.hash()] = new_contract
+            return state
+
+        # If we're trying to send ether to an account that doesn't exist yet, create it
+        if tx.receiver_addr not in state.accounts:
+            state.accounts[tx.receiver_addr] = Account(tx.receiver_addr, 0, 0, None, {})
+
+        # Move the ether
         sender_account.balance -= tx.amount
-        receiver_account = self.find_or_create_empty_account(tx.receiver_addr)
+        receiver_account = state.accounts[tx.receiver_addr]
         receiver_account.balance += tx.amount
 
+        # Call the contract code if the receiver account is a Contract
         if receiver_account.type() == Account.CONTRACT:
-            receiver_account.
-
-    ## Account Methods
-    def call_contract(self, account):
-        def send_message(receiver_addr, amount, data):
-
-        return eval(account.code, {storage: account.storage, send_message: self.send_message})
-
-    def send_message(self, receiver_addr, amount, data):
+            receiver_account.storage = receiver_account.call_contract(receiver_account.storage)
+        return state
 
 
 # Blocks contain multiple transactions
@@ -128,7 +147,7 @@ class Block:
 
     def to_string(self):
         stringified_txs = '\t'.join([tx.to_string() for tx in self.transactions])
-        return '{0}\t{1}'.format(self.prev_block_hash, stringified_txs)
+        return '{0}\t{1}\t{2}'.format(self.prev_block_hash, self.end_state_signature, stringified_txs)
 
     def hash(self):
         return sha256(self.to_string()).hexdigest()
