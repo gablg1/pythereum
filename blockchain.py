@@ -29,11 +29,14 @@ class Account:
 class BlockChain:
     GENESIS_BLOCK_HASH = '00000000'
     def genesis_block(self):
-        return Block([], GENESIS_BLOCK_HASH)
+        return Block([], self.GENESIS_BLOCK_HASH, self.genesis_world_state())
+
+    def genesis_world_state(self):
+        return {accounts: {'0xdeadbeef': Account('0xdeadbeef', 0, 1000)}}
 
     ## Toplevel BlockChain API
     def __init__(self):
-        self.blocks = {genesis_block().hash(): genesis_block()}
+        self.blocks = {self.genesis_block().hash(): self.genesis_block()}
         self.tx_queue = []
 
     def enqueue_transaction(self, tx):
@@ -61,14 +64,17 @@ class BlockChain:
 
     def last_block(self):
         current_block = genesis_block()
-        while (next_block = self.find_block_by(lambda b: b.prev_block_hash == next_block.hash())) is not None:
+        while True:
+            next_block = self.find_block_by((lambda b: b.prev_block_hash == current_block.hash()))
+            if next_block is None:
+                break
             current_block = next_block
         return current_block
 
 
     ## Block methods
     def is_block_valid(self, block):
-        if block.hash == GENESIS_BLOCK_HASH:
+        if block.hash == self.GENESIS_BLOCK_HASH:
             return True
 
         # Check that the previous block is valid
@@ -83,8 +89,8 @@ class BlockChain:
         return self.end_state_signature(block) == block.end_state_signature
 
     def end_state_for_block(self, block):
-        if block.hash == GENESIS_BLOCK_HASH:
-            return {accounts: {}}
+        if block.hash == self.GENESIS_BLOCK_HASH:
+            return self.genesis_world_state()
 
         state = self.end_state_for_block(self.blocks[block.prev_block_hash])
         for tx in block.transactions:
@@ -102,11 +108,8 @@ class BlockChain:
         # So apply_transaction doesn't mutate anything
         state = copy.deepcopy(state)
 
-        def find_or_create_empty_account(address, state):
-            if account_hash not in state.accounts:
-            return (state, state.accounts[address])
-
-        if tx.nonce != (sender_account = state.accounts[tx.sender_addr]).nonce:
+        sender_account = state.accounts[tx.sender_addr]
+        if tx.nonce != sender_account.nonce:
             raise Exception('Transaction nonce must match that of sender account')
 
         # TODO: check well formed tx
@@ -159,3 +162,7 @@ class Transaction:
         self.sender_addr = sender_addr
         self.receiver_addr = receiver_addr
         self.amount = amount
+
+
+blockchain = BlockChain()
+print(blockchain.end_state_for_block(blockchain.last_block()))
