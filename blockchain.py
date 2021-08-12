@@ -67,9 +67,11 @@ class BlockChain:
         # Now that we have the end state sig, we commit the TXs, add the block to the chain, and empty the TX queue
         block = Block(self.tx_queue, self.last_block().hash(), sig)
         self.add_block(block)
-        self.tx_queue = {}
+        self.empty_tx_queue()
         return block
 
+    def empty_tx_queue(self):
+        self.tx_queue = {}
 
     def add_block(self, block):
         if not self.is_block_valid(block):
@@ -90,6 +92,7 @@ class BlockChain:
             current_block = next_block
         return current_block
 
+    def end_state(self): return self.end_state_for_block(self.last_block())
 
     ## Block methods
     def is_block_valid(self, block):
@@ -188,23 +191,35 @@ class Transaction:
         return sha256(self.__str__()).hexdigest()
 
 blockchain = BlockChain()
-print('Initial World state:')
-print(blockchain.end_state_for_block(blockchain.last_block()))
+print('Initial world state is now:')
+print(blockchain.end_state())
 
+# REPL
+while True:
 
-# Create Contract
-blockchain.enqueue_transaction(Transaction(ROOT_ACCOUNT_ADDR, None, 0, 0, "storage['foo'] = 'bar'"))
-new_block = blockchain.mine_new_block()
-state = blockchain.end_state_for_block(blockchain.last_block())
+    try:
+        input_line = raw_input('Submit a transaction formatted as: from_addr to_addr nonce amount "data"\n')
+        from_addr, to_addr, nonce, amount, data = input_line.split(' ', 4)
 
-print('World state after contract creation:')
-print(state)
+        # Typefy inputs
+        def nonify(string): return None if string == 'None' else string
+        to_addr, nonce, amount, data = nonify(to_addr), int(nonce), int(amount), nonify(data.strip('"'))
 
-# Get an call the newly created Contract
-[contract_tx] = new_block.transactions.values()
-contract = state.account_created_by_tx_hash(contract_tx.hash())
+        # Enqueue transaction and mine new block
+        blockchain.enqueue_transaction(Transaction(from_addr, to_addr, nonce, amount, data))
+        block = blockchain.mine_new_block()
+        [tx] = block.transactions.values()
+        end_state = blockchain.end_state()
+    except KeyboardInterrupt:
+        break
+    except Exception as e:
+        print('Invalid transaction. Try again')
+        print(e)
+        blockchain.empty_tx_queue()
+        continue
 
-blockchain.enqueue_transaction(Transaction(ROOT_ACCOUNT_ADDR, contract.address, 0, 0, None))
-blockchain.mine_new_block()
-print('World state after contract call:')
-print(blockchain.end_state_for_block(blockchain.last_block()))
+    print('##################')
+    print('\nTransaction submitted')
+    print('Mined new block {0}\n It contains one transaction {1}'.format(block.hash(), tx.hash()))
+    print('\nThe world state is now:')
+    print(end_state)
