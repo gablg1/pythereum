@@ -1,7 +1,10 @@
 from hashlib import sha256
 import copy
+import json
 
-# The state of Ethereum is the set of all accounts
+# An account is the main piece of state in Ethereum
+# A regular externally owned account holds a balance (just like a Bitcoin account),
+# but a Contract account also holds code and a data storage
 class Account:
     EXTERNALLY_OWNED = 'externally_owned'
     CONTRACT = 'contract'
@@ -24,8 +27,8 @@ class Account:
     def hash(self):
         return sha256(self.__str__()).hexdigest()
 
-    def call_contract(self, storage):
-        exec(self.code, {'storage': storage})
+    def call_contract(self, args):
+        exec(self.code, {'storage': self.storage, 'args': args})
 
 # The state of the entire world is just a set of Accounts
 class WorldState:
@@ -41,7 +44,41 @@ class WorldState:
     def account_created_by_tx_hash(self, creation_tx_hash):
         return next((a for a in self.accounts.values() if a.creation_tx_hash == creation_tx_hash), None)
 
+# A block is just a bunch of transactions and a pointer to the previous block
+class Block:
+    def __init__(self, transactions, prev_block_hash, end_state_signature):
+        self.prev_block_hash = prev_block_hash
+        self.transactions = transactions
+        self.end_state_signature = end_state_signature
 
+    def __str__(self):
+        stringified_txs = '\t'.join([tx.__str__() for tx in self.transactions.values()])
+        return '{0}\t{1}\t{2}'.format(self.prev_block_hash, self.end_state_signature, stringified_txs)
+
+    def hash(self):
+        return sha256(self.__str__()).hexdigest()
+
+# A transaction is the main way to "do something" in Ethereum. Transactions can be used to:
+# - Transfer ether
+# - Create accounts (including contract accounts)
+# - Call contract accounts (call the contract code and pass it some data)
+#
+# Each transaction changes the world state S via apply_transaction(S, TX) => S'
+class Transaction:
+    def __init__(self, sender_addr, receiver_addr, nonce, amount, data):
+        self.sender_addr = sender_addr
+        self.receiver_addr = receiver_addr
+        self.amount = amount
+        self.data = data
+        self.nonce = nonce
+
+    def __str__(self):
+        return '{0},{1},{2},{3}'.format(self.sender_addr, self.receiver_addr, self.amount, self.data)
+
+    def hash(self):
+        return sha256(self.__str__()).hexdigest()
+
+# The above is mainly data models. Most of the interesting code begins here
 ROOT_ACCOUNT_ADDR = '0xdeadbeef'
 class BlockChain:
     PRE_GENESIS_BLOCK_HASH = '00000000'
@@ -80,8 +117,7 @@ class BlockChain:
 
         self.blocks[block.hash()] = block
 
-    def find_block_by(self, fun):
-        return next((b for b in self.blocks.values() if fun(b)), None)
+    def find_block_by(self, fun): return next((b for b in self.blocks.values() if fun(b)), None)
 
     def last_block(self):
         current_block = self.genesis_block()
@@ -120,8 +156,7 @@ class BlockChain:
             state = self.apply_transaction(state, tx)
         return state
 
-    def end_state_signature(self, block):
-        return self.end_state_for_block(block).signature()
+    def end_state_signature(self, block): return self.end_state_for_block(block).signature()
 
     ## Transaction Methods
     def apply_transaction(self, state, tx):
@@ -131,6 +166,7 @@ class BlockChain:
         sender_account = state.accounts[tx.sender_addr]
         if tx.nonce != sender_account.nonce:
             raise Exception('Transaction nonce must match that of sender account')
+        sender_account.nonce += 1
 
         # TODO: check well formed tx
         # TODO: do GAS calculations
@@ -157,53 +193,25 @@ class BlockChain:
 
         # Call the contract code if the receiver account is a Contract
         if receiver_account.type() == Account.CONTRACT:
-            receiver_account.call_contract(receiver_account.storage)
+            # load data dict from string and call contract
+            receiver_account.call_contract(None if tx.data is None else json.loads(tx.data))
         return state
 
-
-# Blocks contain multiple transactions
-class Block:
-    def __init__(self, transactions, prev_block_hash, end_state_signature):
-        self.prev_block_hash = prev_block_hash
-        self.transactions = transactions
-        self.end_state_signature = end_state_signature
-
-    def __str__(self):
-        stringified_txs = '\t'.join([tx.__str__() for tx in self.transactions.values()])
-        return '{0}\t{1}\t{2}'.format(self.prev_block_hash, self.end_state_signature, stringified_txs)
-
-    def hash(self):
-        return sha256(self.__str__()).hexdigest()
-
-# And each transaction changes the state S via APPLY(S, TX) => S'
-class Transaction:
-    def __init__(self, sender_addr, receiver_addr, nonce, amount, data):
-        self.sender_addr = sender_addr
-        self.receiver_addr = receiver_addr
-        self.amount = amount
-        self.data = data
-        self.nonce = nonce
-
-    def __str__(self):
-        return '{0},{1},{2},{3}'.format(self.sender_addr, self.receiver_addr, self.amount, self.data)
-
-    def hash(self):
-        return sha256(self.__str__()).hexdigest()
-
+# Main
 blockchain = BlockChain()
 print('Initial world state is now:')
 print(blockchain.end_state())
 
 # REPL
 while True:
-
     try:
-        input_line = raw_input('Submit a transaction formatted as: from_addr to_addr nonce amount "data"\n')
+        input_line = raw_input('Submit a transaction formatted as: from_addr to_addr nonce amount \'data\'\n')
         from_addr, to_addr, nonce, amount, data = input_line.split(' ', 4)
 
+        print(data)
         # Typefy inputs
         def nonify(string): return None if string == 'None' else string
-        to_addr, nonce, amount, data = nonify(to_addr), int(nonce), int(amount), nonify(data.strip('"'))
+        to_addr, nonce, amount, data = nonify(to_addr), int(nonce), int(amount), nonify(data.strip("'"))
 
         # Enqueue transaction and mine new block
         blockchain.enqueue_transaction(Transaction(from_addr, to_addr, nonce, amount, data))
