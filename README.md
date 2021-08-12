@@ -31,7 +31,7 @@ deadbeef None 1 0 'storage["foo"] = args["my_arg"]'
 ```
 The last argument `'storage["foo"] = args["my_arg"]'` is the actual code for the contract. Instead of Solidity and the EVM, our implementation accepts regular Python code!
 
-Under the hood our contract is just an Ethereum Account containing the above code and an initially empty storage. The contract
+Under the hood our contract is just an Ethereum Account containing the above code and an initially empty storage. This particular contract got stored at address `9b241ab9`.
 
 # Calling your contract
 To call your newly created contract just submit a 0 ether transaction to the contract's addresss:
