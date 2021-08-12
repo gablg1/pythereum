@@ -8,7 +8,6 @@ class Hashable:
 
     def hash(self): return Hashable.hash_fn(self.__str__())
 
-
 # An account is the main piece of state in Ethereum
 # A regular externally owned account holds a balance (just like a Bitcoin account),
 # but a Contract account also holds code and a data storage

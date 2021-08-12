@@ -1,5 +1,5 @@
 # pythereum
-A simple implementation of Ethereum in 200 lines of Python code, following the
+A simple and didactic implementation of Ethereum in 200 lines of Python code, following the
 model described in the original [Ethereum white paper](https://ethereum.org/en/whitepaper/).
 
 # Running it
