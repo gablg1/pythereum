@@ -58,3 +58,13 @@ Storage: {'foo': 42}
 ```
 
 And notice that our contract now has `{'foo': 42}` in its storage because we called it passing args `{"my_arg": 42}`!
+
+# Parallel with real Ethereum
+The interface of `pythereum` is similar in spirit to the interface that dApp clients use to talk with real Ethereum nodes. Here you type a transaction on the prompt, but, in a real dApp, the frontend code would connect with a node in the Ethereum network and submit a transaction very much like the ones above in order to call a smart contract.
+
+This implementation has many simplifications:
+- It's not distributed (you're just running a single pythereum node when you run `python blockchain.py`)
+- We don't handle Gas and security concerns of executing arbitrary user code
+- We don't implement any real notion of mining / proof of work / proof of stake
+
+But hopefully it can be used as a starting point for people to understand Ethereum and Blockchain better!
